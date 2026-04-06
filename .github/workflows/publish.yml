@@ -1,0 +1,32 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+  release:
+    types:
+      - published
+
+jobs:
+  publish:
+    name: Publish to PowerShell Gallery
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Publish module
+        env:
+          NUGET_API_TOKEN: ${{ secrets.NUGET_API_TOKEN }}
+        run: |
+          if (-not $env:NUGET_API_TOKEN) {
+              throw 'Missing NUGET_API_TOKEN secret.'
+          }
+
+          $apiKey = ConvertTo-SecureString $env:NUGET_API_TOKEN -AsPlainText -Force
+          $credential = [pscredential]::new('apikey', $apiKey)
+          ./build.ps1 -Task Publish -PSGalleryApiKey $credential -Bootstrap
