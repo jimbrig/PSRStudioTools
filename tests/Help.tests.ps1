@@ -7,7 +7,7 @@ BeforeDiscovery {
         $commonParams = @(
             'Debug', 'ErrorAction', 'ErrorVariable', 'InformationAction', 'InformationVariable',
             'OutBuffer', 'OutVariable', 'PipelineVariable', 'Verbose', 'WarningAction',
-            'WarningVariable', 'Confirm', 'Whatif'
+            'WarningVariable', 'Confirm', 'Whatif', 'ProgressAction'
         )
         $params | Where-Object { $_.Name -notin $commonParams } | Sort-Object -Property Name -Unique
     }
@@ -77,8 +77,10 @@ Describe 'Test help for <_.Name>' -ForEach $commands {
         ($commandHelp.Examples.Example.Remarks | Select-Object -First 1).Text | Should -Not -BeNullOrEmpty
     }
 
-    It 'Help link <_> is valid' -ForEach $helpLinks {
-        (Invoke-WebRequest -Uri $_ -UseBasicParsing).StatusCode | Should -Be '200'
+    if ($helpLinks) {
+        It 'Help link <_> is valid' -ForEach $helpLinks {
+            (Invoke-WebRequest -Uri $_ -UseBasicParsing).StatusCode | Should -Be '200'
+        }
     }
 
     Context 'Parameter <_.Name>' -Foreach $commandParameters {
@@ -111,7 +113,7 @@ Describe 'Test help for <_.Name>' -ForEach $commands {
 
         # Shouldn't find extra parameters in help.
         It 'finds help parameter in code: <_>' {
-            $_ -in $parameterNames | Should -Be $true
+            $_ -in $commandParameterNames | Should -Be $true
         }
     }
 }

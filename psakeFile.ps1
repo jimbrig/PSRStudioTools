@@ -37,6 +37,7 @@ task Analyze {
 task Test -depends Stage, Analyze {
     $pesterConfig = New-PesterConfiguration
     $pesterConfig.Run.Path = (Join-Path $PSScriptRoot 'tests')
+    $pesterConfig.Run.PassThru = $true
     $pesterConfig.TestResult.Enabled = $true
     $pesterConfig.TestResult.OutputFormat = 'NUnit2.5'
     $pesterConfig.TestResult.OutputPath = $testResultsPath

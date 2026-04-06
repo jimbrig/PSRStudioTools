@@ -41,6 +41,64 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Add-UserModulePaths {
+    [CmdletBinding()]
+    param()
+
+    $candidatePaths = @(
+        (Join-Path $HOME 'Documents\PowerShell\Modules')
+        (Join-Path $HOME 'Documents\WindowsPowerShell\Modules')
+    ) | Where-Object { $_ }
+
+    $currentPaths = $env:PSModulePath -split [System.IO.Path]::PathSeparator
+    foreach ($candidatePath in $candidatePaths) {
+        if ($candidatePath -notin $currentPaths) {
+            $env:PSModulePath = $candidatePath + [System.IO.Path]::PathSeparator + $env:PSModulePath
+            $currentPaths += $candidatePath
+        }
+    }
+}
+
+function Get-BuildDependencyModulePath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Name,
+
+        [Parameter()]
+        [string]$RequiredVersion
+    )
+
+    $availableModules = @(Get-Module -Name $Name -ListAvailable | Sort-Object Version -Descending)
+
+    if ($RequiredVersion) {
+        $exactMatch = $availableModules | Where-Object { $_.Version -eq ([version]$RequiredVersion) } | Select-Object -First 1
+        if ($exactMatch) {
+            return $exactMatch.Path
+        }
+    } elseif ($availableModules) {
+        return ($availableModules | Select-Object -First 1).Path
+    }
+
+    $moduleSearchRoots = $env:PSModulePath -split [System.IO.Path]::PathSeparator | Where-Object { $_ }
+    foreach ($root in $moduleSearchRoots) {
+        if ($RequiredVersion) {
+            $manifestPath = Join-Path $root "$Name\$RequiredVersion\$Name.psd1"
+            if (Test-Path -LiteralPath $manifestPath -PathType Leaf) {
+                return $manifestPath
+            }
+
+            $modulePath = Join-Path $root "$Name\$RequiredVersion\$Name.psm1"
+            if (Test-Path -LiteralPath $modulePath -PathType Leaf) {
+                return $modulePath
+            }
+        }
+    }
+
+    return $null
+}
+
 function Install-BuildDependency {
     [CmdletBinding()]
     param(
@@ -65,32 +123,29 @@ function Install-BuildDependency {
         $installParams.RequiredVersion = [string]$requiredVersion
     }
 
-    $installedModule = Get-Module -Name $Name -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
+    Add-UserModulePaths
+
+    $installedModules = @(Get-Module -Name $Name -ListAvailable | Sort-Object Version -Descending)
+    $installedModule = $installedModules | Select-Object -First 1
     $needsInstall = $true
 
-    if ($installedModule) {
-        if ($requiredVersion) {
-            $needsInstall = ($installedModule.Version -lt ([version]$requiredVersion))
-        } else {
-            $needsInstall = $false
-        }
+    if ($requiredVersion) {
+        $needsInstall = -not ($installedModules | Where-Object { $_.Version -eq ([version]$requiredVersion) } | Select-Object -First 1)
+    } elseif ($installedModule) {
+        $needsInstall = $false
     }
 
     if ($needsInstall) {
         Install-Module @installParams
+        Add-UserModulePaths
     }
 
-    $importParams = @{
-        Name        = $Name
-        Force       = $true
-        ErrorAction = 'Stop'
+    $modulePath = Get-BuildDependencyModulePath -Name $Name -RequiredVersion $requiredVersion
+    if (-not $modulePath) {
+        throw "Unable to locate an importable module for '$Name' after installation."
     }
 
-    if ($requiredVersion) {
-        $importParams.RequiredVersion = [string]$requiredVersion
-    }
-
-    Import-Module @importParams
+    Import-Module -Name $modulePath -Force -ErrorAction Stop
 }
 
 # Bootstrap dependencies
